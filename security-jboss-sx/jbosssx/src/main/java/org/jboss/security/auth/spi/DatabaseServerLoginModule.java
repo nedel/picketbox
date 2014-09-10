@@ -77,11 +77,12 @@ public class DatabaseServerLoginModule extends UsernamePasswordLoginModule
    private static final String SUSPEND_RESUME = "suspendResume";
    private static final String PRINCIPALS_QUERY = "principalsQuery";
    private static final String TRANSACTION_MANAGER_JNDI_NAME = "transactionManagerJndiName";
+   private static final String DEFAULT_CALLBACK_HANDLER="default-callback-handler-class-name";
 
-   private static final String[] ALL_VALID_OPTIONS =
-   {
-      DS_JNDI_NAME,ROLES_QUERY,SUSPEND_RESUME,PRINCIPALS_QUERY,TRANSACTION_MANAGER_JNDI_NAME
-   };
+   private static final String[] ALL_VALID_OPTIONS
+            = {
+                DS_JNDI_NAME, ROLES_QUERY, SUSPEND_RESUME, PRINCIPALS_QUERY, TRANSACTION_MANAGER_JNDI_NAME, DEFAULT_CALLBACK_HANDLER
+            };
    
    /** The JNDI name of the DataSource to use */
    protected String dsJndiName;
@@ -123,10 +124,10 @@ public class DatabaseServerLoginModule extends UsernamePasswordLoginModule
          rolesQuery = tmp.toString();
       tmp = options.get(SUSPEND_RESUME);
       if( tmp != null )
-         suspendResume = Boolean.valueOf(tmp.toString()).booleanValue();
+           suspendResume = Boolean.valueOf(tmp.toString()).booleanValue();
 	  
-      //Get the Transaction Manager JNDI Name
-      String jname = (String) options.get(TRANSACTION_MANAGER_JNDI_NAME);
+       //Get the Transaction Manager JNDI Name
+       String jname = (String) options.get(TRANSACTION_MANAGER_JNDI_NAME);
       if(jname != null)
          this.txManagerJndiName = jname;
 

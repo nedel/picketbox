@@ -43,8 +43,11 @@ public class DigestCallbackHandler implements CallbackHandler {
     private String qop;
     private String realm;
     private String md5a2;
+    private String algorithm;
+    private String method;
+    private String uri;
 
-    public DigestCallbackHandler(String username, String nonce, String nc, String cnonce, String qop, String realm, String md5a2) {
+    public DigestCallbackHandler(String username, String nonce, String nc, String cnonce, String qop, String realm, String md5a2, String algorithm, String method, String uri) {
         this.username = username;
         this.nonce = nonce;
         this.nc = nc;
@@ -52,6 +55,9 @@ public class DigestCallbackHandler implements CallbackHandler {
         this.qop = qop;
         this.realm = realm;
         this.md5a2 = md5a2;
+        this.algorithm=algorithm;
+        this.method=method;
+        this.uri=uri;
     }
 
     public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
@@ -69,6 +75,9 @@ public class DigestCallbackHandler implements CallbackHandler {
                 mc.setInfo(RFC2617Digest.QOP, qop);
                 mc.setInfo(RFC2617Digest.REALM, realm);
                 mc.setInfo(RFC2617Digest.A2HASH, md5a2);
+                mc.setInfo(RFC2617Digest.ALGORITHM, algorithm);
+                mc.setInfo(RFC2617Digest.METHOD, method);
+                mc.setInfo(RFC2617Digest.DIGEST_URI, uri);
                 foundCallback = true;
             } else if (firstUnknown == null) {
                 firstUnknown = c;
