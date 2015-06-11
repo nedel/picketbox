@@ -77,6 +77,7 @@ public class DatabaseServerLoginModule extends UsernamePasswordLoginModule
    private static final String SUSPEND_RESUME = "suspendResume";
    private static final String PRINCIPALS_QUERY = "principalsQuery";
    private static final String TRANSACTION_MANAGER_JNDI_NAME = "transactionManagerJndiName";
+   private static final String DEFAULT_CALLBACK_HANDLER="default-callback-handler-class-name";
 
    private static final String[] ALL_VALID_OPTIONS =
    {

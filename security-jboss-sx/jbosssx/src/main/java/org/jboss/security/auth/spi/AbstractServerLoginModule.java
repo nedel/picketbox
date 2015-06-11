@@ -75,10 +75,11 @@ public abstract class AbstractServerLoginModule implements LoginModule
    private static final String PRINCIPAL_CLASS = "principalClass";
    private static final String UNAUTHENTICATED_IDENTITY = "unauthenticatedIdentity";
    private static final String MODULE = "module";
+   private static final String DEFAULT_CALLBACK_HANDLER="default-callback-handler-class-name";
   
    private static final String[] ALL_VALID_OPTIONS =
    {
-	   PASSWORD_STACKING,PRINCIPAL_CLASS,UNAUTHENTICATED_IDENTITY,MODULE,
+	   PASSWORD_STACKING,PRINCIPAL_CLASS,UNAUTHENTICATED_IDENTITY,MODULE,DEFAULT_CALLBACK_HANDLER,
 	   SecurityConstants.SECURITY_DOMAIN_OPTION
    };
    

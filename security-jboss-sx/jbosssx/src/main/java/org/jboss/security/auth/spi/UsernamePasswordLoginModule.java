@@ -21,10 +21,27 @@
 */
 package org.jboss.security.auth.spi;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.Principal;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.StringTokenizer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.security.auth.Subject;
+import javax.security.auth.callback.*;
+import javax.security.auth.login.FailedLoginException;
+import javax.security.auth.login.LoginException;
+import javax.security.jacc.PolicyContext;
+import javax.security.jacc.PolicyContextException;
+import javax.servlet.http.HttpServletRequest;
 import org.jboss.crypto.digest.DigestCallback;
 import org.jboss.security.PicketBoxLogger;
 import org.jboss.security.PicketBoxMessages;
-import org.jboss.security.plugins.ClassLoaderLocatorFactory;
+import org.jboss.security.auth.callback.DigestCallbackHandler;
+import org.jboss.security.auth.callback.RFC2617Digest;
 import org.jboss.security.vault.SecurityVaultException;
 import org.jboss.security.vault.SecurityVaultUtil;
 
@@ -71,6 +88,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
    private static final String THROW_VALIDATE_ERROR = "throwValidateError";
    private static final String INPUT_VALIDATOR = "inputValidator";
    private static final String PASS_IS_A1_HASH = "passwordIsA1Hash";
+   private static final String DEFAULT_CALLBACK_HANDLER="default-callback-handler-class-name";
 
    private static final String[] ALL_VALID_OPTIONS =
    {
@@ -78,7 +96,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
      HASH_STORE_PASSWORD,HASH_USER_PASSWORD,
      DIGEST_CALLBACK,STORE_DIGEST_CALLBACK,
      IGNORE_PASSWORD_CASE,LEGACY_CREATE_PASSWORD_HASH,
-     THROW_VALIDATE_ERROR,INPUT_VALIDATOR, PASS_IS_A1_HASH
+     THROW_VALIDATE_ERROR,INPUT_VALIDATOR, PASS_IS_A1_HASH, DEFAULT_CALLBACK_HANDLER,
    };
    
    /** The login identity */
@@ -111,6 +129,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
 
    /** The input validator instance used to validate the username and password supplied by the client. */
    private InputValidator inputValidator = null;
+   private DigestCallbackHandler digestCallbackHandler;
    
    /** Override the superclass method to look for the following options after
     first invoking the super version.
@@ -181,6 +200,70 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
             PicketBoxLogger.LOGGER.debugFailureToInstantiateClass(flag, e);
          }
       }
+       String callbackHandlerName = (String) options.get(DEFAULT_CALLBACK_HANDLER);
+       if (callbackHandlerName != null) {
+           PicketBoxLogger.LOGGER.trace("loading " + DEFAULT_CALLBACK_HANDLER);
+
+           HttpServletRequest request = null;
+           try {
+               request = (HttpServletRequest) PolicyContext.getContext("javax.servlet.http.HttpServletRequest");
+
+               String authorizationHeaderValue = request.getHeader("Authorization");
+               Map authParameters = getAuthorizationParameters(authorizationHeaderValue);
+
+               String cnonce = (String) authParameters.get("cnonce");
+               String nonce = (String) authParameters.get("nonce");
+               String username = (String) authParameters.get("username");
+               String qop = (String) authParameters.get(RFC2617Digest.QOP);
+               String realm = (String) authParameters.get(RFC2617Digest.REALM);
+               String nc = (String) authParameters.get(RFC2617Digest.NONCE_COUNT);
+               String hA2 = (String) authParameters.get(RFC2617Digest.A2HASH);
+               String algorithm = (String) authParameters.get(RFC2617Digest.ALGORITHM);
+               String method = (String) request.getMethod();
+               String uri = (String) authParameters.get("uri");
+               //pass all header parameters to digestcallback
+               digestCallbackHandler = new DigestCallbackHandler(username, nonce, nc, cnonce, qop, realm, hA2, algorithm, method, uri);
+
+           } catch (PolicyContextException ex) {
+               Logger.getLogger(UsernamePasswordLoginModule.class.getName()).log(Level.SEVERE, null, ex);
+           }
+
+       }
+
+    }
+
+    /**
+     * https://www.google.at/url?sa=t&rct=j&q=&esrc=s&source=web&cd=9&ved=0CGkQFjAI&url=https%3A%2F%2Fsvn.strategoxt.org%2Frepos%2Fgw%2Fbranches%2Fstorage%2Fsrc%2Fjava%2Fgw%2Fusers%2Fview%2FChallengeResponseLoginServlet.java&ei=hwIQVKHPKKr_ygPi-IGwAQ&usg=AFQjCNGLsXC36Yi-ibU8wc0T6uNOtTp2Pw&sig2=FoPAhdT8L00M9O6jNbC3yw&bvm=bv.74649129,d.bGQ
+     * from Stratego/XT
+     * @author Arie Middelkoop
+     * @author John van Schie Extracts the parameters out of the authorization
+     * header.
+     *
+     * @param authorizationHeaderValue The value of the authorization header.
+     * @return The authorization parameters.
+     */
+    private Map getAuthorizationParameters(String authorizationHeaderValue) {
+        int digestIndex = authorizationHeaderValue.indexOf("Digest");
+        if (digestIndex < 0 )
+            throw new RuntimeException( "Invalid authorization type. Should be Digest." );
+
+        Map parameters = new HashMap();
+        String authorizationString = authorizationHeaderValue.substring( digestIndex + "Digest".length() + 1 );
+        StringTokenizer tokenizer = new StringTokenizer( authorizationString, "," );
+        while( tokenizer.hasMoreTokens() ) {
+            String keyValuePair = tokenizer.nextToken();
+
+            int equalIndex = keyValuePair.indexOf( "=" );
+            if( equalIndex < 0 )
+                throw new RuntimeException( "Invalid authorization header specified." );
+
+            String key = keyValuePair.substring( 0, equalIndex ).trim();
+            String value = keyValuePair.substring( equalIndex + 1 ).replace( '"', ' ' ).trim();
+
+            parameters.put( key, value );
+        }
+
+        return parameters;
    }
 
    /** Perform the authentication of the username and password.
@@ -369,6 +452,21 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
          throw le;
       }
       info[0] = username;
+       if (digestCallbackHandler != null) {
+           //load response from header to compare with local computation
+           HttpServletRequest request = null;
+           try {
+               request = (HttpServletRequest) PolicyContext.getContext("javax.servlet.http.HttpServletRequest");
+               String authorizationHeaderValue = request.getHeader("Authorization");
+               Map authParameters = getAuthorizationParameters(authorizationHeaderValue);
+               String digestPassword = (String) authParameters.get("response");
+               if (digestPassword != null) {
+                   password = digestPassword;
+               }
+           } catch (PolicyContextException ex) {
+               Logger.getLogger(UsernamePasswordLoginModule.class.getName()).log(Level.SEVERE, null, ex);
+           }
+       }
       info[1] = password;
       return info;
    }
@@ -429,11 +527,13 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
          callback.init(tmp);
          // Check for a callbacks
          Callback[] callbacks = (Callback[]) tmp.get("callbacks");
-         if( callbacks != null )
-         {
-            try
-            {
+         if (callbacks != null) {
+           try {
+                  if (digestCallbackHandler != null) {
+                      digestCallbackHandler.handle(callbacks);
+                  } else {
                callbackHandler.handle(callbacks);
+                  }
             }
             catch(IOException e)
             {
