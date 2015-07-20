@@ -21,6 +21,8 @@
  */
 package org.jboss.security.auth.spi;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.Principal;
 import java.security.acl.Group;
 import java.util.Iterator;
@@ -469,6 +471,14 @@ public class LdapExtLoginModule extends UsernamePasswordLoginModule
          SearchControls constraints = new SearchControls();
          constraints.setSearchScope(searchScope);
          constraints.setTimeLimit(searchTimeLimit);
+         String[] attrList;
+         if (referralUserAttributeIDToCheck != null) 
+         {
+             attrList = new String[] {roleAttributeID, referralUserAttributeIDToCheck};
+         } else {
+             attrList = new String[] {roleAttributeID};
+         }
+         constraints.setReturningAttributes(attrList);
          rolesSearch(ctx, constraints, username, userDN, recursion, 0);
       }
       catch(Exception e)
@@ -542,32 +552,81 @@ public class LdapExtLoginModule extends UsernamePasswordLoginModule
           Attribute dn = attrs.get(distinguishedNameAttribute);
           if (dn != null)
           {
-                  userDN = (String) dn.get();
+              userDN = (String) dn.get();
           }
       }
+      
+      results.close();
+      results = null;
+      
       if (userDN == null)
       {
           if (sr.isRelative() == true) {
-             userDN = new CompositeName(name).get(0) + ("".equals(baseDN) ? "" : "," + baseDN);
+              userDN = new CompositeName(name).get(0) + ("".equals(baseDN) ? "" : "," + baseDN);
+              // SECURITY-225: don't need to authenticate again
+              if (isPasswordValidated)
+              {
+                 // Bind as the user dn to authenticate the user
+                 InitialLdapContext userCtx = constructInitialLdapContext(userDN, credential);
+                 userCtx.close();
+              }
           }
           else {
-             throw PicketBoxMessages.MESSAGES.unableToFollowReferralForAuth(name);
+             userDN = bindDNReferralAuthentication(sr.getName(), credential); 
+             if (userDN == null) {
+                 throw PicketBoxMessages.MESSAGES.unableToFollowReferralForAuth(name);
+             }
           }
       }
-
-      results.close();
-      results = null;
-      // SECURITY-225: don't need to authenticate again
-      if (isPasswordValidated)
-      {
-         // Bind as the user dn to authenticate the user
-         InitialLdapContext userCtx = constructInitialLdapContext(userDN, credential);
-         userCtx.close();
+      else {
+          if (isPasswordValidated)
+          {
+             // Bind as the user dn to authenticate the user
+             InitialLdapContext userCtx = constructInitialLdapContext(userDN, credential);
+             userCtx.close();
+          }
       }
 
       return userDN;
    }
 
+   /**
+    * This method validates absoluteName and credential against referral LDAP and returns used user DN. 
+    * 
+    * <ol>
+    * <li> Parses given absoluteName to URL and DN
+    * <li> creates initial LDAP context of referral LDAP to validate credential
+    * <li> closes the initial context
+    * </ol>
+    *
+    * It uses all options from login module setup except of ProviderURL.
+    * 
+    * @param absoluteName - absolute user DN
+    * @param credential
+    * @return used user DN for validation
+    * @throws NamingException
+    */
+   private String bindDNReferralAuthentication(String absoluteName, Object credential)
+           throws NamingException
+   {
+       URI uri;
+       try {
+           uri = new URI(absoluteName);
+       } 
+       catch (URISyntaxException e)  
+       {
+           throw PicketBoxMessages.MESSAGES.unableToParseReferralAbsoluteName(e, absoluteName);
+       }
+       String name = uri.getPath().substring(1);
+       String namingProviderURL = uri.getScheme() + "://" + uri.getAuthority();
+       
+       Properties refEnv = constructLdapContextEnvironment(namingProviderURL, name, credential);
+
+       InitialLdapContext refCtx = new InitialLdapContext(refEnv, null);
+       refCtx.close();
+	   return name;
+   }
+   
    /**
     @param ctx
     @param constraints
@@ -764,38 +823,48 @@ public class LdapExtLoginModule extends UsernamePasswordLoginModule
    
    private InitialLdapContext constructInitialLdapContext(String dn, Object credential) throws NamingException
    {
-      Properties env = new Properties();
-      Iterator iter = options.entrySet().iterator();
-      while (iter.hasNext())
-      {
-         Entry entry = (Entry) iter.next();
-         env.put(entry.getKey(), entry.getValue());
-      }
-
-      // Set defaults for key values if they are missing
-      String factoryName = env.getProperty(Context.INITIAL_CONTEXT_FACTORY);
-      if (factoryName == null)
-      {
-         factoryName = "com.sun.jndi.ldap.LdapCtxFactory";
-         env.setProperty(Context.INITIAL_CONTEXT_FACTORY, factoryName);
-      }
-      String authType = env.getProperty(Context.SECURITY_AUTHENTICATION);
-      if (authType == null)
-         env.setProperty(Context.SECURITY_AUTHENTICATION, "simple");
-      String protocol = env.getProperty(Context.SECURITY_PROTOCOL);
-      String providerURL = (String) options.get(Context.PROVIDER_URL);
-      if (providerURL == null)
-         providerURL = "ldap://localhost:" + ((protocol != null && protocol.equals("ssl")) ? "636" : "389");
-
-      env.setProperty(Context.PROVIDER_URL, providerURL);
-      // JBAS-3555, allow anonymous login with no bindDN and bindCredential
-      if (dn != null)
-         env.setProperty(Context.SECURITY_PRINCIPAL, dn);
-      if (credential != null)
-         env.put(Context.SECURITY_CREDENTIALS, credential);
-       this.traceLDAPEnv(env);
+       String protocol = (String)options.get(Context.SECURITY_PROTOCOL);
+       String providerURL = (String) options.get(Context.PROVIDER_URL);
+       if (providerURL == null)
+          providerURL = "ldap://localhost:" + ((protocol != null && protocol.equals("ssl")) ? "636" : "389");
+       
+       Properties env = constructLdapContextEnvironment(providerURL, dn, credential);
        return new InitialLdapContext(env, null);
    }
+   
+   private Properties constructLdapContextEnvironment(String namingProviderURL, String principalDN, Object credential) {
+       Properties env = new Properties();
+       Iterator iter = options.entrySet().iterator();
+       while (iter.hasNext())
+       {
+          Entry entry = (Entry) iter.next();
+          env.put(entry.getKey(), entry.getValue());
+       }
+
+       // Set defaults for key values if they are missing
+       String factoryName = env.getProperty(Context.INITIAL_CONTEXT_FACTORY);
+       if (factoryName == null)
+       {
+          factoryName = "com.sun.jndi.ldap.LdapCtxFactory";
+          env.setProperty(Context.INITIAL_CONTEXT_FACTORY, factoryName);
+       }
+       String authType = env.getProperty(Context.SECURITY_AUTHENTICATION);
+       if (authType == null)
+          env.setProperty(Context.SECURITY_AUTHENTICATION, "simple");
+       
+       if (namingProviderURL != null) {
+           env.setProperty(Context.PROVIDER_URL, namingProviderURL);
+       }
+
+       // JBAS-3555, allow anonymous login with no bindDN and bindCredential
+       if (principalDN != null)
+          env.setProperty(Context.SECURITY_PRINCIPAL, principalDN);
+       if (credential != null)
+          env.put(Context.SECURITY_CREDENTIALS, credential);
+       this.traceLDAPEnv(env);
+       return env;
+   }
+   
 
    /**
     * <p>

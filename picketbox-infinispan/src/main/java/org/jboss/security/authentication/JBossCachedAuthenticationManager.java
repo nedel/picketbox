@@ -22,6 +22,7 @@
 package org.jboss.security.authentication;
 
 import java.io.Serializable;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.security.Principal;
 import java.security.acl.Group;
@@ -29,6 +30,7 @@ import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
@@ -105,7 +107,6 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
       }
    }
 
-   @Override
    public Subject getActiveSubject()
    {
       Subject subj = null;
@@ -117,31 +118,30 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
       return subj;
    }
 
-   @Override
    public Principal getTargetPrincipal(Principal anotherDomainPrincipal, Map<String, Object> contextMap)
    {
       throw new UnsupportedOperationException();
    }
 
-   @Override
    public boolean isValid(Principal principal, Object credential)
    {
       return isValid(principal, credential, null);
    }
 
-   @Override
    public boolean isValid(Principal principal, Object credential, Subject activeSubject)
    {
       // first check cache
-      DomainInfo cachedEntry = getCacheInfo(principal);
-      PicketBoxLogger.LOGGER.traceBeginIsValid(principal, cachedEntry != null ? cachedEntry.toString() : null);
+      DomainInfo cachedEntry = getCacheInfo(principal != null ? principal : new org.jboss.security.SimplePrincipal("null"));
+      if (PicketBoxLogger.LOGGER.isTraceEnabled())
+      {
+         PicketBoxLogger.LOGGER.traceBeginIsValid(principal, cachedEntry != null ? cachedEntry.toString() : null);
+      }
 
       boolean isValid = false;
       if (cachedEntry != null)
       {
          isValid = validateCache(cachedEntry, credential, activeSubject);
       }
-
       if (!isValid)
          isValid = authenticate(principal, credential, activeSubject);
 
@@ -149,36 +149,34 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
       return isValid;
    }
 
-   @Override
    public String getSecurityDomain()
    {
       return securityDomain;
    }
 
-   @Override
    public void flushCache()
    {
       PicketBoxLogger.LOGGER.traceFlushWholeCache();
-      if (domainCache != null)
-         domainCache.clear();
-   }
-
-   @Override
-   public void flushCache(Principal key)
-   {
-      if (domainCache != null && key != null) {
-         PicketBoxLogger.LOGGER.traceFlushCacheEntry(key.getName());
-         domainCache.remove(key);
+      if (domainCache != null) {
+         for (Principal principal : domainCache.keySet()) {
+            this.flushCache(principal);
+         }
       }
    }
 
-   @Override
+   public void flushCache(Principal key)
+   {
+      if (key != null && this.domainCache != null && this.domainCache.containsKey(key))
+         // this is currently done to preserve backwards compatibility - logout removes the entry from the cache and performs
+         // the JAAS logout.
+         this.logout(key, null);
+   }
+
    public void setCache(ConcurrentMap<Principal, DomainInfo> cache)
    {
       this.domainCache = cache;
    }
 
-   @Override
    public boolean containsKey(Principal key)
    {
       if (domainCache != null && key != null)
@@ -186,7 +184,6 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
       return false;
    }
    
-   @Override
    public Set<Principal> getCachedKeys()
    {
       if (domainCache != null)
@@ -225,7 +222,10 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
    private boolean validateCache(DomainInfo info, Object credential, Subject theSubject)
    {
 
-      PicketBoxLogger.LOGGER.traceBeginValidateCache(info.toString(), credential != null ? credential.getClass() : null);
+      if (PicketBoxLogger.LOGGER.isTraceEnabled())
+      {
+         PicketBoxLogger.LOGGER.traceBeginValidateCache(info.toString(), credential != null ? credential.getClass() : null);
+      }
 
       Object subjectCredential = info.credential;
       boolean isValid = false;
@@ -320,7 +320,7 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
 					   try
 					   {
 						   SubjectActions.setContextClassLoader(newTCCL);
-						   return proceedWithJaasLogin(principal, credential, theSubject);
+						   return proceedWithJaasLogin(principal, credential, theSubject, newTCCL);
 					   }
 					   finally
 					   {
@@ -330,11 +330,11 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
 			   }
 		   }
 	   }
-	   return proceedWithJaasLogin(principal, credential, theSubject);
+	   return proceedWithJaasLogin(principal, credential, theSubject, null);
    }
    
 
-   private boolean proceedWithJaasLogin(Principal principal, Object credential, Subject theSubject)
+   private boolean proceedWithJaasLogin(Principal principal, Object credential, Subject theSubject, ClassLoader contextClassLoader)
    {
 	   Subject subject = null;
 	   boolean authenticated = false;
@@ -360,14 +360,12 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
 
 			   authenticated = true;
 			   // Build the Subject based DomainInfo cache value
-			   updateCache(lc, subject, principal, credential);
+			   updateCache(lc, subject, principal, credential, contextClassLoader);
 		   }
 	   }
 	   catch (LoginException e)
 	   {
-		   // Don't log anonymous user failures unless trace level logging is on
-		   if (principal != null && principal.getName() != null)
-               PicketBoxLogger.LOGGER.debugFailedLogin(e);
+		   PicketBoxLogger.LOGGER.debugFailedLogin(e);
 		   authException = e;
 	   }
 	   // Set the security association thread context info exception
@@ -406,7 +404,10 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
       PicketBoxLogger.LOGGER.traceDefaultLoginPrincipal(principal);
       lc = SubjectActions.createLoginContext(securityDomain, subject, theHandler);
       lc.login();
-      PicketBoxLogger.LOGGER.traceDefaultLoginSubject(lc.toString(), SubjectActions.toString(subject));
+      if (PicketBoxLogger.LOGGER.isTraceEnabled())
+      {
+         PicketBoxLogger.LOGGER.traceDefaultLoginSubject(lc.toString(), SubjectActions.toString(subject));
+      }
       return lc;
    }
 
@@ -420,10 +421,10 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
     * @param credential user's proof of identity
     * @return authenticated {@link Subject}
     */
-   private Subject updateCache(LoginContext loginContext, Subject subject, Principal principal, Object credential)
+   private Subject updateCache(LoginContext loginContext, Subject subject, Principal principal, Object credential, ClassLoader lcClassLoader)
    {
       // If we don't have a cache there is nothing to update
-      if (domainCache == null || principal == null)
+      if (domainCache == null)
          return subject;
 
       DomainInfo info = new DomainInfo();
@@ -431,8 +432,24 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
       info.subject = new Subject();
       SubjectActions.copySubject(subject, info.subject, true, this.deepCopySubjectOption);
       info.credential = credential;
-
-      PicketBoxLogger.LOGGER.traceUpdateCache(SubjectActions.toString(subject), SubjectActions.toString(info.subject));
+      if (lcClassLoader == null) 
+      {
+            lcClassLoader = java.security.AccessController.doPrivileged(new java.security.PrivilegedAction<ClassLoader>() {
+                public ClassLoader run() {
+                    ClassLoader loader = Thread.currentThread().getContextClassLoader();
+                    if (loader == null) 
+                    {
+                        loader = ClassLoader.getSystemClassLoader();
+                    }
+                    return loader;
+                }
+            });
+       }
+        info.contextClassLoader = lcClassLoader;
+      if (PicketBoxLogger.LOGGER.isTraceEnabled())
+      {
+         PicketBoxLogger.LOGGER.traceUpdateCache(SubjectActions.toString(subject), SubjectActions.toString(info.subject));
+      }
 
       // Get the Subject callerPrincipal by looking for a Group called 'CallerPrincipal'
       Set<Group> subjectGroups = subject.getPrincipals(Group.class);
@@ -470,10 +487,28 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
 
       // If the user already exists another login is active. Currently
       // only one is allowed so remove the old and insert the new
-      domainCache.put(principal, info);
-      PicketBoxLogger.LOGGER.traceInsertedCacheInfo(info.toString());
+      domainCache.put(principal != null ? principal : new org.jboss.security.SimplePrincipal("null"), info);
+      if (PicketBoxLogger.LOGGER.isTraceEnabled())
+      {
+         PicketBoxLogger.LOGGER.traceInsertedCacheInfo(info.toString());
+      }
+
       return info.subject;
    }
+    /**
+     * Release cache entries got the specified ClassLoader.
+     *
+     * @param classLoader the ClassLoader.
+     */
+    public void releaseModuleEntries(final ClassLoader classLoader) {
+        if (domainCache != null) {
+            for (Entry<Principal, DomainInfo> entry : domainCache.entrySet()) {
+                if ((classLoader == null && entry.getValue().contextClassLoader == null) || classLoader.equals(entry.getValue().contextClassLoader)) {
+                    flushCache(entry.getKey());
+                }
+            }
+        }
+    }
 
    /**
     * A cache value. Holds information about the authentication process.
@@ -492,6 +527,9 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
 
       protected Principal callerPrincipal;
 
+      protected ClassLoader contextClassLoader = null;
+
+      @Deprecated
       public void logout()
       {
          if (loginContext != null)
@@ -506,5 +544,57 @@ public class JBossCachedAuthenticationManager implements AuthenticationManager, 
             }
          }
       }
+   }
+
+   public void logout(Principal principal, Subject subject) {
+       LoginContext context = null;
+
+       // if a cache is active, remove the principal from the cache and try to perform the logout using the cached context.
+       if (domainCache != null && principal != null) {
+           if (PicketBoxLogger.LOGGER.isTraceEnabled())
+           {
+              PicketBoxLogger.LOGGER.traceFlushCacheEntry(principal.getName());
+           }
+           DomainInfo info = domainCache.get(principal);
+           domainCache.remove(principal);
+           if (info != null && info.loginContext != null) {
+               context = info.loginContext;
+               subject = info.subject;
+           }
+       }
+
+       // if no cached context was found, create a new one with the incoming subject.
+       if (context == null) {
+          Object[] securityInfo = {principal, null};
+          CallbackHandler theHandler = null;
+          if (subject == null)
+              subject = new Subject();
+          try
+          {
+             theHandler = callbackHandler.getClass().newInstance();
+             setSecurityInfo.invoke(theHandler, securityInfo);
+             context = SubjectActions.createLoginContext(securityDomain, subject, theHandler);
+          }
+          catch (Throwable e)
+          {
+             LoginException le = new LoginException(PicketBoxMessages.MESSAGES.unableToInitializeLoginContext(e));
+             le.initCause(e);
+             SubjectActions.setContextInfo("org.jboss.security.exception", le);
+             return;
+          }
+       }
+
+       // perform the JAAS logout.
+       try {
+           context.logout();
+           if (PicketBoxLogger.LOGGER.isTraceEnabled())
+           {
+              PicketBoxLogger.LOGGER.traceLogoutSubject(context.toString(), SubjectActions.toString(subject));
+           }
+       }
+       catch (LoginException le) {
+           SubjectActions.setContextInfo("org.jboss.security.exception", le);
+       }
+
    }
 }

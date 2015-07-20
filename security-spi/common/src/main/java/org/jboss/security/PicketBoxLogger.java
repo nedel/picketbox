@@ -1,6 +1,8 @@
 package org.jboss.security;
 
-import org.jboss.logging.*;
+import org.jboss.logging.BasicLogger;
+import org.jboss.logging.Logger;
+import org.jboss.logging.annotations.*;
 
 import javax.security.auth.Subject;
 import java.net.URL;
@@ -10,7 +12,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
-@MessageLogger(projectCode = "PBOX")
+@MessageLogger(projectCode = "PBOX", length = 5)
 public interface PicketBoxLogger extends BasicLogger {
 
     PicketBoxLogger LOGGER = Logger.getMessageLogger(PicketBoxLogger.class,
@@ -196,8 +198,8 @@ public interface PicketBoxLogger extends BasicLogger {
     void traceBeginLogout();
 
     @LogMessage(level = Logger.Level.TRACE)
-    @Message(id = 244, value = "Begin abort method")
-    void traceBeginAbort();
+    @Message(id = 244, value = "Begin abort method, overall result: %s")
+    void traceBeginAbort(boolean loginOk);
 
     @LogMessage(level = Logger.Level.TRACE)
     @Message(id = 245, value = "Found security domain: %s")
@@ -719,4 +721,17 @@ public interface PicketBoxLogger extends BasicLogger {
     @LogMessage(level = Logger.Level.ERROR)
     @Message(id = 374, value = "Error getting ServerAuthContext for authContextId %s and security domain %s")
     void errorGettingServerAuthContext(String authContextId, String securityDomain, @Cause Throwable cause);
+    
+    @LogMessage(level = Logger.Level.ERROR)
+    @Message(id = 375, value = "Error getting the module classloader informations for cache")
+    void errorGettingModuleInformation(@Cause Throwable cause);
+    
+    @LogMessage(level = Logger.Level.WARN)
+    @Message(id = 376, value = "Wrong Base64 string used with masked password utility. Following is correct (%s)")
+    void wrongBase64StringUsed(String fixedBase64);
+
+    @LogMessage(level = Logger.Level.TRACE)
+    @Message(id = 377, value = "JAAS logout, login context: %s, subject: %s")
+    void traceLogoutSubject(String loginContext, String subject);
+
 }

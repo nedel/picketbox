@@ -2,7 +2,7 @@
    <parent>
       <groupId>org.picketbox</groupId>
       <artifactId>jbosssx-parent</artifactId>
-      <version>4.0.21.Beta1</version>
+      <version>4.9.2.Final</version>
       <relativePath>../parent</relativePath>
    </parent>
    <modelVersion>4.0.0</modelVersion>
@@ -52,9 +52,17 @@
       <dependency>
          <groupId>org.jboss.logging</groupId>
          <artifactId>jboss-logging</artifactId>
-         <version>3.1.0.GA</version>
-         <scope>provided</scope>
       </dependency>
+       <dependency>
+           <groupId>org.jboss.logging</groupId>
+           <artifactId>jboss-logging-annotations</artifactId>
+           <scope>provided</scope>
+       </dependency>
+       <dependency>
+           <groupId>org.jboss.logging</groupId>
+           <artifactId>jboss-logging-processor</artifactId>
+           <scope>provided</scope>
+       </dependency>
       <dependency>
          <groupId>org.hibernate</groupId>
          <artifactId>hibernate-core</artifactId>

@@ -2,6 +2,7 @@ package org.jboss.security;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.security.GeneralSecurityException;
 import java.security.KeyException;
 import java.security.ProviderException;
@@ -16,13 +17,13 @@ import javax.security.auth.login.LoginException;
 import javax.xml.stream.Location;
 import javax.xml.stream.XMLStreamException;
 
-import org.jboss.logging.Cause;
-import org.jboss.logging.Message;
-import org.jboss.logging.MessageBundle;
 import org.jboss.logging.Messages;
-import org.jboss.logging.Param;
+import org.jboss.logging.annotations.Cause;
+import org.jboss.logging.annotations.Message;
+import org.jboss.logging.annotations.MessageBundle;
+import org.jboss.logging.annotations.Param;
 
-@MessageBundle(projectCode = "PBOX")
+@MessageBundle(projectCode = "PBOX", length = 5)
 public interface PicketBoxMessages {
 
     PicketBoxMessages MESSAGES = Messages.getBundle(PicketBoxMessages.class);
@@ -210,10 +211,10 @@ public interface PicketBoxMessages {
     @Message(id = 61, value = "Invalid null TransactionManager")
     IllegalStateException invalidNullTransactionManager();
 
-    @Message(id = 62, value = "No matching username found found in principals")
+    @Message(id = 62, value = "No matching username found in principals")
     FailedLoginException noMatchingUsernameFoundInPrincipals();
 
-    @Message(id = 63, value = "No matching username found found in roles")
+    @Message(id = 63, value = "No matching username found in roles")
     FailedLoginException noMatchingUsernameFoundInRoles();
 
     @Message(id = 64, value = "Error looking up DataSource from %s")
@@ -370,8 +371,8 @@ public interface PicketBoxMessages {
     @Message(id = 111, value = "Usage: Base64Encoder <string> <optional hash algorithm>")
     String base64EncoderMessage();
 
-    @Message(id = 112, value = "Invalid empty Base64 string")
-    NumberFormatException invalidEmptyBase64String();
+    @Message(id = 112, value = "Invalid Base64 string: %s")
+    IllegalArgumentException invalidBase64String(String base64Str);
 
     @Message(id = 113, value = "Illegal Base64 character")
     NumberFormatException illegalBase64Character();
@@ -456,7 +457,20 @@ public interface PicketBoxMessages {
 
     @Message(id = 140, value = "Unable to get keystore (%s)")
     RuntimeException unableToGetKeyStore(@Cause Throwable throwable, String file);
+    
+    @Message(id = 141, value = "Unable to parse referral absolute name: %s")
+    RuntimeException unableToParseReferralAbsoluteName(@Cause URISyntaxException cause, String absoluteName);
 
-    @Message(id = 141, value = "Keystore password should be either masked or prefixed with one of {EXT}, {EXTC}, {CMD}, {CMDC}, {CLASS}")
+    @Message(id = 142, value = "Keystore password should be either masked or prefixed with one of {EXT}, {EXTC}, {CMD}, {CMDC}, {CLASS}")
     String invalidKeystorePasswordFormatMessage();
+
+    @Message(id = 143, value = "Unable to load password class (%s). Try to specify module to load class from using '{CLASS@module}class_name'")
+    RuntimeException unableToLoadPasswordClass(@Cause Throwable t, String classToLoad);
+
+    @Message(id = 144, value = "Trying to load null or empty class")
+    RuntimeException loadingNullorEmptyClass();
+
+    @Message(id = 145, value = "Unable to initialize login context")
+    String unableToInitializeLoginContext(@Cause Throwable cause);
+
 }

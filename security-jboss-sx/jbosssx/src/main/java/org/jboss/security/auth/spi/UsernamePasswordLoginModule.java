@@ -45,6 +45,16 @@ import org.jboss.security.auth.callback.RFC2617Digest;
 import org.jboss.security.vault.SecurityVaultException;
 import org.jboss.security.vault.SecurityVaultUtil;
 
+import javax.security.auth.Subject;
+import javax.security.auth.callback.*;
+import javax.security.auth.login.FailedLoginException;
+import javax.security.auth.login.LoginException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.Principal;
+import java.util.HashMap;
+import java.util.Map;
+
 
 /** An abstract subclass of AbstractServerLoginModule that imposes
  * an identity == String username, credentials == String password view on
@@ -78,7 +88,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
    private static final String INPUT_VALIDATOR = "inputValidator";
    private static final String PASS_IS_A1_HASH = "passwordIsA1Hash";
    private static final String DEFAULT_CALLBACK_HANDLER="default-callback-handler-class-name";
-   
+
    private static final String[] ALL_VALID_OPTIONS =
    {
      HASH_ALGORITHM,HASH_ENCODING,HASH_CHARSET,
@@ -181,7 +191,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
       {
          try
          {
-            Class<?> validatorClass = SecurityActions.loadClass(flag); 
+            Class<?> validatorClass = SecurityActions.loadClass(flag, jbossModuleName);
             this.inputValidator = (InputValidator) validatorClass.newInstance();
          }
          catch(Exception e)
@@ -189,7 +199,6 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
             PicketBoxLogger.LOGGER.debugFailureToInstantiateClass(flag, e);
          }
       }
-      
        String callbackHandlerName = (String) options.get(DEFAULT_CALLBACK_HANDLER);
        if (callbackHandlerName != null) {
            PicketBoxLogger.LOGGER.trace("loading " + DEFAULT_CALLBACK_HANDLER);
@@ -254,7 +263,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
         }
 
         return parameters;
-    }
+   }
 
    /** Perform the authentication of the username and password.
     */
@@ -418,8 +427,8 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
       String password = null;
       try
       {
-              callbackHandler.handle(callbacks);
-          username = nc.getName();
+         callbackHandler.handle(callbacks);
+         username = nc.getName();
          char[] tmpPassword = pc.getPassword();
          if( tmpPassword != null )
          {
@@ -442,7 +451,6 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
          throw le;
       }
       info[0] = username;
-
        if (digestCallbackHandler != null) {
            //load response from header to compare with local computation
            HttpServletRequest request = null;
@@ -458,9 +466,8 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
                Logger.getLogger(UsernamePasswordLoginModule.class.getName()).log(Level.SEVERE, null, ex);
            }
        }
-
-       info[1] = password;
-       return info;
+      info[1] = password;
+      return info;
    }
 
   /**
@@ -501,7 +508,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
       {
          try
          {
-            Class<?> callbackClass = SecurityActions.loadClass(callbackClassName);
+            Class<?> callbackClass = SecurityActions.loadClass(callbackClassName, jbossModuleName);
             callback = (DigestCallback) callbackClass.newInstance();
             PicketBoxLogger.LOGGER.traceCreateDigestCallback(callbackClassName);
          }
@@ -511,12 +518,12 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
             le.initCause(e);
             throw le;
          }
-           Map<String,Object> tmp = new HashMap<String,Object>();
-           tmp.putAll(options);
-           tmp.put("javax.security.auth.login.name", username);
-           tmp.put("javax.security.auth.login.password", password);
+         Map<String,Object> tmp = new HashMap<String,Object>();
+         tmp.putAll(options);
+         tmp.put("javax.security.auth.login.name", username);
+         tmp.put("javax.security.auth.login.password", password);
 
-           callback.init(tmp);
+         callback.init(tmp);
          // Check for a callbacks
          Callback[] callbacks = (Callback[]) tmp.get("callbacks");
          if (callbacks != null) {
@@ -524,7 +531,7 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
                   if (digestCallbackHandler != null) {
                       digestCallbackHandler.handle(callbacks);
                   } else {
-                      callbackHandler.handle(callbacks);
+               callbackHandler.handle(callbacks);
                   }
             }
             catch(IOException e)
@@ -538,12 +545,12 @@ public abstract class UsernamePasswordLoginModule extends AbstractServerLoginMod
                 LoginException le = PicketBoxMessages.MESSAGES.failedToInvokeCallbackHandler();
                 le.initCause(e);
                throw le;
-               }
-           }
-       }
-       String passwordHash = Util.createPasswordHash(hashAlgorithm, hashEncoding,
-               hashCharset, username, password, callback);
-       return passwordHash;
+            }
+         }
+      }
+      String passwordHash = Util.createPasswordHash(hashAlgorithm, hashEncoding,
+         hashCharset, username, password, callback);
+      return passwordHash;
    }
 
    /**

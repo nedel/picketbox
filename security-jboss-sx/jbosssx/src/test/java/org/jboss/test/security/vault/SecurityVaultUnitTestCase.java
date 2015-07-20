@@ -36,10 +36,12 @@ import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.PBEParameterSpec;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.channels.FileChannel;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -68,6 +70,31 @@ public class SecurityVaultUnitTestCase
       assertNotNull(vault);
       assertTrue(vault instanceof PicketBoxSecurityVault);
       assertFalse(vault.isInitialized());
+   }
+
+   @Test
+   public void testClassLoaderVault() throws Exception
+   {
+      //Back up the existing vault and reset it
+      Field field = SecurityVaultFactory.class.getDeclaredField("vault");
+      field.setAccessible(true);
+      Object existingVault = field.get(null);
+      try
+      {
+         field.set(null, null);
+         ClassLoader cl = SecurityVaultFactory.class.getClassLoader();
+         SecurityVault vault = SecurityVaultFactory.get(cl, TestVault.class.getName());
+         assertNotNull(vault);
+         assertTrue(vault instanceof TestVault);
+         assertFalse(vault.isInitialized());
+      }
+      finally
+      {
+         if (existingVault != null)
+         {
+            field.set(null, existingVault);
+         }
+      }
    }
    
    @Test
@@ -103,7 +130,7 @@ public class SecurityVaultUnitTestCase
       Map<String,Object> options = getVaultOptionsMap(
             "target/vaults/long_alias_keystore/vault.jks", 
             "target/vaults/long_alias_keystore/vault_data", 
-            "superverylongvaultname", "87654321", 23, "password1234"); 
+            "superverylongvaultname", "87654321", 23, "password1234", Boolean.TRUE);
 
       vault.init(options);
       assertTrue("Vault is supposed to be inicialized", vault.isInitialized());
@@ -123,6 +150,34 @@ public class SecurityVaultUnitTestCase
       assertFalse("Shared key returned from hadshake cannot contain line break character", containsLineBreaks);
    }
 
+   
+   @Test
+   public void testMaskedPasswordFallback() throws Exception {
+
+      setInitialVaulConditions(
+              "src/test/resources/vault-fallback/vault-fallback.keystore", "target/vaults/vault-fallback/vault-fallback.keystore", 
+              "src/test/resources/vault-fallback/vault_data", "target/vaults/vault-fallback/vault_data");
+      
+      // see src/test/resources/vault-fallback/readme.txt
+      // this test uses wrongly generated maked password value and should fallback to correct one 
+      final Map<String, Object> options = getVaultOptionsMap(
+            "target/vaults/vault-fallback/vault-fallback.keystore", 
+            "target/vaults/vault-fallback/vault_data", 
+            "valias", "bdfbdf12", 12, "MASK-UWB5tlhOmKYzJVl9KZaPN");
+      
+      SecurityVault vault = getNewSecurityVaultInstance();
+      assertFalse(vault.isInitialized());
+      
+      vault.init(options);
+      assertTrue(vault.isInitialized());
+      
+      vault.handshake(null);
+      
+      // let's try to check if proper values are stored in the vault
+      assertSecretValue(vault, "vblock", "attr1", "secret1");
+      
+   }
+   
    @Test
    public void testStoreAndRetrieve() throws Exception
    {
@@ -439,6 +494,9 @@ public class SecurityVaultUnitTestCase
       if (Util.isPasswordCommand(pwd))
          return pwd;
 
+      if (pwd.startsWith(PicketBoxSecurityVault.PASS_MASK_PREFIX)) 
+         return pwd;
+      
       String algo = "PBEwithMD5andDES";
       
       // Create the PBE secret key 
@@ -456,7 +514,7 @@ public class SecurityVaultUnitTestCase
    
 
    private Map<String, Object> getVaultOptionsMap(String keystore, String encDataDir, String alias, String salz, int iter,
-         String password) throws Exception {
+         String password, Boolean createKeystore) throws Exception {
       Map<String, Object> options = new HashMap<String, Object>();
       options.put(PicketBoxSecurityVault.KEYSTORE_URL, keystore);
       options.put(PicketBoxSecurityVault.KEYSTORE_PASSWORD, getMaskedPassword(password, salz, iter));
@@ -464,9 +522,18 @@ public class SecurityVaultUnitTestCase
       options.put(PicketBoxSecurityVault.SALT, salz);
       options.put(PicketBoxSecurityVault.ITERATION_COUNT, String.valueOf(iter));
       options.put(PicketBoxSecurityVault.ENC_FILE_DIR, encDataDir);
+      if (createKeystore != null) {
+         options.put(PicketBoxSecurityVault.CREATE_KEYSTORE, createKeystore.toString());
+      }
       return options;
    }
-   
+
+   private Map<String, Object> getVaultOptionsMap(String keystore, String encDataDir, String alias, String salz, int iter,
+                                                   String password) throws Exception {
+      return getVaultOptionsMap(keystore, encDataDir, alias, salz, iter, password, null);
+   }
+
+
    public static void setInitialVaulConditions(String originalKeyStoreFile, String targetKeyStoreFile,
          String originalVaultContentDir, String targetVaultContentDir) throws Exception {
 

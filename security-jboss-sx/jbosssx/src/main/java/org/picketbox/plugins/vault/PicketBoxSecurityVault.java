@@ -76,7 +76,7 @@ import java.util.StringTokenizer;
  * command is a string delimited by ',' where the first part is the actual
  * command and further parts represents its parameters. The comma can be
  * backslashed in order to keep it as the part of a parameter.
- * '{CLASS}classname[:ctorargs]' where the '[:ctorargs]' is an optional
+ * '{CLASS[@modulename]}classname[:ctorargs]' where the '[:ctorargs]' is an optional
  * string delimited by the ':' from the classname that will be passed to the
  * classname ctor. The ctorargs itself is a comma delimited list of strings.
  * The password is obtained from classname by invoking a
@@ -197,7 +197,7 @@ public class PicketBoxSecurityVault implements SecurityVault
 
       
       createKeyStore = (options.get(CREATE_KEYSTORE) != null ? Boolean.parseBoolean((String) options.get(CREATE_KEYSTORE))
-            : createKeyStore);
+            : false);
       keyStoreType = (options.get(KEYSTORE_TYPE) != null ? (String) options.get(KEYSTORE_TYPE) : defaultKeyStoreType);
 
       try {
@@ -360,7 +360,6 @@ public class PicketBoxSecurityVault implements SecurityVault
 
          maskedString = maskedString.substring(PASS_MASK_PREFIX.length());
          String decodedValue = PBEUtils.decode64(maskedString, pbeAlgo, cipherKey, cipherSpec);
-
          maskedString = decodedValue;
       }
       return maskedString;
@@ -376,6 +375,9 @@ public class PicketBoxSecurityVault implements SecurityVault
           adminKey = sk; 
       }
       else {
+          if (!createKeyStore) {
+              throw PicketBoxMessages.MESSAGES.vaultDoesnotContainSecretKey(alias);
+          }
           // try to generate new admin key and store it under specified alias
           EncryptionUtil util = new EncryptionUtil(encryptionAlgorithm, keySize);
           sk = util.generateKey();
@@ -672,17 +674,7 @@ public class PicketBoxSecurityVault implements SecurityVault
      * @return
      */
     private KeyStore getKeyStore(String keystoreURL) {
-        
-        try {
-            return KeyStoreUtil.getKeyStore(keyStoreType, keystoreURL, keyStorePWD);
-        }
-        catch (IOException e) {
-            // deliberately empty
-        }
-        catch (GeneralSecurityException e) {
-            throw PicketBoxMessages.MESSAGES.unableToGetKeyStore(e, keystoreURL);
-        }
-        
+
         try {
             if (createKeyStore) {
                 return KeyStoreUtil.createKeyStore(keyStoreType, keyStorePWD);
@@ -691,8 +683,16 @@ public class PicketBoxSecurityVault implements SecurityVault
         catch (Throwable e) {
             throw PicketBoxMessages.MESSAGES.unableToGetKeyStore(e, keystoreURL);
         }
-        
-        return null;
+
+        try {
+            return KeyStoreUtil.getKeyStore(keyStoreType, keystoreURL, keyStorePWD);
+        }
+        catch (IOException e) {
+            throw PicketBoxMessages.MESSAGES.unableToGetKeyStore(e, keystoreURL);
+        }
+        catch (GeneralSecurityException e) {
+            throw PicketBoxMessages.MESSAGES.unableToGetKeyStore(e, keystoreURL);
+        }
     }
-    
+
 }

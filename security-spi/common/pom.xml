@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.picketbox</groupId>
         <artifactId>picketbox-spi-parent</artifactId>
-        <version>4.0.21.Beta1</version>
+        <version>4.9.2.Final</version>
         <relativePath>../parent</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -25,23 +25,27 @@
         <url>http://www.jboss.org</url>
     </organization>
     <scm>
-        <connection>scm:svn:http://anonsvn.jboss.org/repos/picketbox/security-spi/tags/4.0.21.Beta1</connection>
-        <developerConnection>scm:svn:https://svn.jboss.org/repos/picketbox/security-spi/tags/4.0.21.Beta1</developerConnection>
-        <url>http://viewvc.jboss.org/cgi-bin/viewvc.cgi/picketbox/security-spi/tags/4.0.21.Beta1</url>
+        <connection>scm:svn:http://anonsvn.jboss.org/repos/picketbox/security-spi/tags/4.9.2.Final</connection>
+        <developerConnection>scm:svn:https://svn.jboss.org/repos/picketbox/security-spi/tags/4.9.2.Final</developerConnection>
+        <url>http://viewvc.jboss.org/cgi-bin/viewvc.cgi/picketbox/security-spi/tags/4.9.2.Final</url>
     </scm>
     <dependencies>
         <dependency>
             <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging</artifactId>
-            <version>3.1.0.GA</version>
+            <version>3.2.1.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.logging</groupId>
+            <artifactId>jboss-logging-annotations</artifactId>
+            <version>2.0.0.Final</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging-processor</artifactId>
-            <version>1.0.0.Final</version>
+            <version>2.0.0.Final</version>
             <scope>provided</scope>
-            <optional>true</optional>
         </dependency>
     </dependencies>
 </project>
